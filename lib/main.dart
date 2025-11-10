@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
+import 'services/camera_service.dart';
 import 'screens/task_list_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Inicializar câmera
+  await CameraService.instance.initialize();
+
   runApp(const MyApp());
 }
 
@@ -11,8 +17,21 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Task Manager',
-      theme: ThemeData(primarySwatch: Colors.blue),
+      title: 'Task Manager Pro',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.blue,
+          brightness: Brightness.light,
+        ),
+        useMaterial3: true,
+        cardTheme: CardThemeData(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
       home: const TaskListScreen(),
     );
   }
