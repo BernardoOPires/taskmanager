@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:task_manager/services/camera_service.dart';
+import 'package:task_manager/services/rabbitmq_service.dart';
 import '../models/task.dart';
 import '../services/database_service.dart';
 import '../services/sensor_service.dart';
@@ -23,16 +24,15 @@ class _TaskListScreenState extends State<TaskListScreen> {
   void initState() {
     super.initState();
     _loadTasks();
-    _setupShakeDetection(); // INICIAR SHAKE
+    _setupShakeDetection();
   }
 
   @override
   void dispose() {
-    SensorService.instance.stop(); // PARAR SHAKE
+    SensorService.instance.stop();
     super.dispose();
   }
 
-  // SHAKE DETECTION
   void _setupShakeDetection() {
     SensorService.instance.startShakeDetection(() {
       _showShakeDialog();
@@ -166,7 +166,6 @@ class _TaskListScreenState extends State<TaskListScreen> {
       case 'completed':
         return _tasks.where((t) => t.completed).toList();
       case 'nearby':
-        // Implementar filtro de proximidade
         return _tasks;
       default:
         return _tasks;
@@ -289,6 +288,33 @@ class _TaskListScreenState extends State<TaskListScreen> {
     }
   }
 
+  Future<void> _checkoutTask(Task task) async {
+    try {
+      await RabbitMQService.instance.publishCheckout(
+        listId: (task.id ?? 0).toString(),
+        userEmail: 'aluno@pucminas.br',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Checkout enviado para a lista "${task.title}"'),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao enviar checkout: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final stats = _statistics;
@@ -395,7 +421,6 @@ class _TaskListScreenState extends State<TaskListScreen> {
             ? const Center(child: CircularProgressIndicator())
             : Column(
                 children: [
-                  // CARD DE ESTATÍSTICAS
                   Container(
                     margin: const EdgeInsets.all(16),
                     padding: const EdgeInsets.all(20),
@@ -443,8 +468,6 @@ class _TaskListScreenState extends State<TaskListScreen> {
                       ],
                     ),
                   ),
-
-                  // LISTA DE TAREFAS
                   Expanded(
                     child: filteredTasks.isEmpty
                         ? _buildEmptyState()
@@ -468,6 +491,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
                                 onDelete: () => _deleteTask(task),
                                 onCheckboxChanged: (value) =>
                                     _toggleComplete(task),
+                                onCheckout: () => _checkoutTask(task),
                               );
                             },
                           ),

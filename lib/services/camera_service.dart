@@ -4,7 +4,10 @@ import 'package:camera/camera.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:image_picker/image_picker.dart';
+import 'package:image/image.dart' as img;
 import '../screens/camera_screen.dart';
+
+enum ImageFilterType { none, grayscale, sepia }
 
 class CameraService {
   static final CameraService instance = CameraService._init();
@@ -16,7 +19,6 @@ class CameraService {
   Future<void> initialize() async {
     try {
       _cameras = await availableCameras();
-      // print ok
     } catch (e) {
       _cameras = [];
     }
@@ -120,5 +122,39 @@ class CameraService {
     } catch (_) {
       return false;
     }
+  }
+
+  Future<String> applyFilterAndResave(String sourcePath, ImageFilterType filter) async {
+    final bytes = await File(sourcePath).readAsBytes();
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) {
+      throw Exception('Falha ao decodificar imagem.');
+    }
+
+    img.Image processed = decoded;
+    switch (filter) {
+      case ImageFilterType.grayscale:
+        processed = img.grayscale(processed);
+        break;
+      case ImageFilterType.sepia:
+        processed = img.sepia(processed);
+        break;
+      case ImageFilterType.none:
+        break;
+    }
+
+    final outJpg = img.encodeJpg(processed, quality: 90);
+
+    final appDir = await getApplicationDocumentsDirectory();
+    final imagesDir = Directory(path.join(appDir.path, 'images'));
+    if (!await imagesDir.exists()) {
+      await imagesDir.create(recursive: true);
+    }
+
+    final ts = DateTime.now().toIso8601String().replaceAll(':', '-');
+    final destPath = path.join(imagesDir.path, 'filtered_$ts.jpg');
+
+    await File(destPath).writeAsBytes(outJpg);
+    return destPath;
   }
 }

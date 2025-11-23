@@ -8,6 +8,7 @@ class TaskCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onDelete;
   final Function(bool?) onCheckboxChanged;
+  final VoidCallback onCheckout;
 
   const TaskCard({
     super.key,
@@ -15,6 +16,7 @@ class TaskCard extends StatelessWidget {
     required this.onTap,
     required this.onDelete,
     required this.onCheckboxChanged,
+    required this.onCheckout,
   });
 
   Color _getPriorityColor() {
@@ -94,9 +96,7 @@ class TaskCard extends StatelessWidget {
                     onChanged: onCheckboxChanged,
                     activeColor: Colors.green,
                   ),
-
                   const SizedBox(width: 8),
-
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -114,7 +114,6 @@ class TaskCard extends StatelessWidget {
                                 : Colors.black87,
                           ),
                         ),
-
                         if (task.description.isNotEmpty) ...[
                           const SizedBox(height: 4),
                           Text(
@@ -129,15 +128,11 @@ class TaskCard extends StatelessWidget {
                             ),
                           ),
                         ],
-
                         const SizedBox(height: 8),
-
-                        // BADGES
                         Wrap(
                           spacing: 8,
                           runSpacing: 8,
                           children: [
-                            // Prioridade
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 8,
@@ -170,8 +165,6 @@ class TaskCard extends StatelessWidget {
                                 ],
                               ),
                             ),
-
-                            // Foto
                             if (task.hasPhoto)
                               Container(
                                 padding: const EdgeInsets.symmetric(
@@ -205,8 +198,6 @@ class TaskCard extends StatelessWidget {
                                   ],
                                 ),
                               ),
-
-                            // Localização
                             if (task.hasLocation)
                               Container(
                                 padding: const EdgeInsets.symmetric(
@@ -240,8 +231,6 @@ class TaskCard extends StatelessWidget {
                                   ],
                                 ),
                               ),
-
-                            // Shake
                             if (task.completed && task.wasCompletedByShake)
                               Container(
                                 padding: const EdgeInsets.symmetric(
@@ -280,18 +269,26 @@ class TaskCard extends StatelessWidget {
                       ],
                     ),
                   ),
-
-                  IconButton(
-                    onPressed: onDelete,
-                    icon: const Icon(Icons.delete_outline),
-                    color: Colors.red,
-                    tooltip: 'Deletar',
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        onPressed: onCheckout,
+                        icon: const Icon(Icons.shopping_cart_checkout),
+                        color: Colors.blue,
+                        tooltip: 'Finalizar compra',
+                      ),
+                      IconButton(
+                        onPressed: onDelete,
+                        icon: const Icon(Icons.delete_outline),
+                        color: Colors.red,
+                        tooltip: 'Deletar',
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-
-            // PREVIEW DA FOTO
             if (task.hasPhoto)
               ClipRRect(
                 borderRadius: const BorderRadius.only(
