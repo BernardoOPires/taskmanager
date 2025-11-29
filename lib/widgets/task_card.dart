@@ -1,14 +1,13 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/task.dart';
-import '../services/location_service.dart';
 
 class TaskCard extends StatelessWidget {
   final Task task;
   final VoidCallback onTap;
   final VoidCallback onDelete;
   final Function(bool?) onCheckboxChanged;
-  final VoidCallback onCheckout;
+  final VoidCallback? onCheckout;
 
   const TaskCard({
     super.key,
@@ -16,7 +15,7 @@ class TaskCard extends StatelessWidget {
     required this.onTap,
     required this.onDelete,
     required this.onCheckboxChanged,
-    required this.onCheckout,
+    this.onCheckout,
   });
 
   Color _getPriorityColor() {
@@ -67,6 +66,9 @@ class TaskCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final priorityColor = _getPriorityColor();
+    final syncColor = task.isSynced ? Colors.green : Colors.orange;
+    final syncIcon = task.isSynced ? Icons.cloud_done : Icons.cloud_off;
+    final syncLabel = task.isSynced ? 'Sincronizado' : 'Pendente';
 
     return Card(
       elevation: 2,
@@ -160,6 +162,34 @@ class TaskCard extends StatelessWidget {
                                       fontSize: 12,
                                       fontWeight: FontWeight.w500,
                                       color: priorityColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: syncColor.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: syncColor.withOpacity(0.5),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(syncIcon, size: 14, color: syncColor),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    syncLabel,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: syncColor,
                                     ),
                                   ),
                                 ],
@@ -270,20 +300,20 @@ class TaskCard extends StatelessWidget {
                     ),
                   ),
                   Column(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      IconButton(
-                        onPressed: onCheckout,
-                        icon: const Icon(Icons.shopping_cart_checkout),
-                        color: Colors.blue,
-                        tooltip: 'Finalizar compra',
-                      ),
                       IconButton(
                         onPressed: onDelete,
                         icon: const Icon(Icons.delete_outline),
                         color: Colors.red,
                         tooltip: 'Deletar',
                       ),
+                      if (onCheckout != null)
+                        IconButton(
+                          onPressed: onCheckout,
+                          icon: const Icon(Icons.shopping_cart_checkout),
+                          color: Colors.blue,
+                          tooltip: 'Finalizar / Checkout',
+                        ),
                     ],
                   ),
                 ],

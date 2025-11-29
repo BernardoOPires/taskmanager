@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:task_manager/services/task_repository.dart';
 import '../models/task.dart';
-import '../services/database_service.dart';
 import '../services/camera_service.dart';
 import '../services/location_service.dart';
 import '../widgets/location_picker.dart';
@@ -25,7 +25,6 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   bool _isLoading = false;
 
   String? _photoPath;
-
   double? _latitude;
   double? _longitude;
   String? _locationName;
@@ -54,93 +53,36 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   }
 
   Future<void> _takePicture() async {
-    final originalPath = await CameraService.instance.takePicture(context);
-    if (originalPath == null || !mounted) return;
-
-    final filteredPath = await _chooseAndApplyFilter(originalPath);
-    if (!mounted) return;
-
-    setState(() => _photoPath = filteredPath ?? originalPath);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('📷 Foto capturada!'),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 2),
-      ),
-    );
+    final path = await CameraService.instance.takePicture(context);
+    if (path != null && mounted) {
+      setState(() => _photoPath = path);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Foto capturada'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
   }
 
   Future<void> _pickFromGallery() async {
-    final originalPath = await CameraService.instance.pickFromGallery(context);
-    if (originalPath == null || !mounted) return;
-
-    final filteredPath = await _chooseAndApplyFilter(originalPath);
-    if (!mounted) return;
-
-    setState(() => _photoPath = filteredPath ?? originalPath);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('🖼️ Foto selecionada!'),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  Future<String?> _chooseAndApplyFilter(String sourcePath) async {
-    final selected = await showModalBottomSheet<ImageFilterType>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const ListTile(
-                title: Text('Aplicar filtro'),
-                subtitle: Text('Escolha um filtro para salvar na imagem'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.filter_none),
-                title: const Text('Nenhum'),
-                onTap: () => Navigator.pop(context, ImageFilterType.none),
-              ),
-              ListTile(
-                leading: const Icon(Icons.filter_b_and_w),
-                title: const Text('P&B (preto e branco)'),
-                onTap: () => Navigator.pop(context, ImageFilterType.grayscale),
-              ),
-              ListTile(
-                leading: const Icon(Icons.filter_vintage),
-                title: const Text('Sépia'),
-                onTap: () => Navigator.pop(context, ImageFilterType.sepia),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-
-    if (selected == null) return null;
-    if (selected == ImageFilterType.none) return null;
-
-    final newPath = await CameraService.instance.applyFilterAndResave(
-      sourcePath,
-      selected,
-    );
-
-    return newPath;
+    final path = await CameraService.instance.pickFromGallery(context);
+    if (path != null && mounted) {
+      setState(() => _photoPath = path);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Foto selecionada'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
   }
 
   void _removePhoto() {
     setState(() => _photoPath = null);
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('🗑️ Foto removida')));
+    ).showSnackBar(const SnackBar(content: Text('Foto removida')));
   }
 
   void _viewPhoto() {
@@ -197,13 +139,14 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     });
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('📍 Localização removida')));
+    ).showSnackBar(const SnackBar(content: Text('Localização removida')));
   }
 
   Future<void> _saveTask() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
+    final now = DateTime.now();
 
     try {
       if (widget.task == null) {
@@ -216,19 +159,21 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
           latitude: _latitude,
           longitude: _longitude,
           locationName: _locationName,
+          lastModifiedAt: now,
+          isSynced: false,
         );
-        await DatabaseService.instance.create(newTask);
 
+        await TaskRepository().create(newTask);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('✓ Tarefa criada'),
+              content: Text('Tarefa criada'),
               backgroundColor: Colors.green,
             ),
           );
         }
       } else {
-        final updatedTask = widget.task!.copyWith(
+        final updated = widget.task!.copyWith(
           title: _titleController.text.trim(),
           description: _descriptionController.text.trim(),
           priority: _priority,
@@ -237,13 +182,15 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
           latitude: _latitude,
           longitude: _longitude,
           locationName: _locationName,
+          lastModifiedAt: now,
+          isSynced: false,
         );
-        await DatabaseService.instance.update(updatedTask);
 
+        await TaskRepository().update(updated);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('✓ Tarefa atualizada'),
+              content: Text('Tarefa atualizada'),
               backgroundColor: Colors.blue,
             ),
           );
@@ -289,13 +236,9 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                         prefixIcon: Icon(Icons.title),
                         border: OutlineInputBorder(),
                       ),
-                      textCapitalization: TextCapitalization.sentences,
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
                           return 'Digite um título';
-                        }
-                        if (value.trim().length < 3) {
-                          return 'Mínimo 3 caracteres';
                         }
                         return null;
                       },
@@ -311,9 +254,8 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                         border: OutlineInputBorder(),
                         alignLabelWithHint: true,
                       ),
-                      maxLines: 4,
+                      maxLines: 3,
                       maxLength: 500,
-                      textCapitalization: TextCapitalization.sentences,
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
@@ -324,15 +266,12 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                         border: OutlineInputBorder(),
                       ),
                       items: const [
-                        DropdownMenuItem(value: 'low', child: Text('🟢 Baixa')),
-                        DropdownMenuItem(
-                          value: 'medium',
-                          child: Text('🟡 Média'),
-                        ),
-                        DropdownMenuItem(value: 'high', child: Text('🟠 Alta')),
+                        DropdownMenuItem(value: 'low', child: Text('Baixa')),
+                        DropdownMenuItem(value: 'medium', child: Text('Média')),
+                        DropdownMenuItem(value: 'high', child: Text('Alta')),
                         DropdownMenuItem(
                           value: 'urgent',
-                          child: Text('🔴 Urgente'),
+                          child: Text('Urgente'),
                         ),
                       ],
                       onChanged: (value) {
@@ -341,7 +280,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                     ),
                     const SizedBox(height: 24),
                     SwitchListTile(
-                      title: const Text('Tarefa Completa'),
+                      title: const Text('Tarefa completa'),
                       subtitle: Text(_completed ? 'Sim' : 'Não'),
                       value: _completed,
                       onChanged: (value) => setState(() => _completed = value),
@@ -385,13 +324,6 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                           height: 200,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 8,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
@@ -409,19 +341,13 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                           OutlinedButton.icon(
                             onPressed: _takePicture,
                             icon: const Icon(Icons.camera_alt),
-                            label: const Text('Tirar Foto'),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.all(16),
-                            ),
+                            label: const Text('Tirar foto'),
                           ),
                           const SizedBox(height: 8),
                           OutlinedButton.icon(
                             onPressed: _pickFromGallery,
                             icon: const Icon(Icons.photo_library),
-                            label: const Text('Selecionar da Galeria'),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.all(16),
-                            ),
+                            label: const Text('Selecionar da galeria'),
                           ),
                         ],
                       ),
@@ -474,24 +400,17 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                       OutlinedButton.icon(
                         onPressed: _showLocationPicker,
                         icon: const Icon(Icons.add_location),
-                        label: const Text('Adicionar Localização'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.all(16),
-                        ),
+                        label: const Text('Adicionar localização'),
                       ),
                     const SizedBox(height: 32),
                     ElevatedButton.icon(
                       onPressed: _isLoading ? null : _saveTask,
                       icon: const Icon(Icons.save),
-                      label: Text(isEditing ? 'Atualizar' : 'Criar Tarefa'),
+                      label: Text(isEditing ? 'Atualizar' : 'Criar tarefa'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.all(16),
-                        textStyle: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
                       ),
                     ),
                   ],
