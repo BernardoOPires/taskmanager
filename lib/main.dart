@@ -7,8 +7,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await CameraService.instance.initialize();
-  await ConnectivityService.instance.startMonitoring();
-
+  await ConnectivityService.instance.start();
   runApp(const MyApp());
 }
 

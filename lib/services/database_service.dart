@@ -32,32 +32,32 @@ class DatabaseService {
 
   Future<void> _onCreate(Database db, int version) async {
     await db.execute('''
-      CREATE TABLE tasks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        description TEXT NOT NULL,
-        priority TEXT NOT NULL,
-        completed INTEGER NOT NULL DEFAULT 0,
-        completed_at INTEGER,
-        completed_by TEXT,
-        photo_path TEXT,
-        latitude REAL,
-        longitude REAL,
-        location_name TEXT,
-        last_modified_at INTEGER NOT NULL,
-        is_synced INTEGER NOT NULL DEFAULT 0
-      )
-    ''');
+        CREATE TABLE tasks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          title TEXT NOT NULL,
+          description TEXT NOT NULL,
+          priority TEXT NOT NULL,
+          completed INTEGER NOT NULL DEFAULT 0,
+          completed_at INTEGER,
+          completed_by TEXT,
+          photo_path TEXT,
+          latitude REAL,
+          longitude REAL,
+          location_name TEXT,
+          last_modified_at INTEGER NOT NULL,
+          is_synced INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
 
     await db.execute('''
-      CREATE TABLE sync_queue (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        task_id INTEGER,
-        operation TEXT NOT NULL,
-        payload TEXT NOT NULL,
-        timestamp INTEGER NOT NULL
-      )
-    ''');
+        CREATE TABLE sync_queue (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          task_id INTEGER,
+          operation TEXT NOT NULL,
+          payload TEXT NOT NULL,
+          timestamp INTEGER NOT NULL
+        )
+      ''');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {}
@@ -132,6 +132,12 @@ class DatabaseService {
       'payload': jsonEncode(task.toMap()),
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
+  }
+
+  Future<void> forceMarkAllAsSynced() async {
+    final db = await database;
+
+    await db.update('tasks', {'is_synced': 1});
   }
 
   Future<List<Map<String, dynamic>>> getQueue() async {

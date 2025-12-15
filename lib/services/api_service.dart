@@ -16,39 +16,34 @@ class ApiService {
     }
 
     if (response.statusCode == 404) return null;
-    return null;
+    throw Exception('Erro buscando remoto');
   }
 
-  Future<int> createRemote(Map<String, dynamic> payload) async {
-    final uri = Uri.parse(baseUrl);
-
-    final response = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(payload),
-    );
-
-    if (response.statusCode == 200 || response.statusCode == 201) {
-      final data = jsonDecode(response.body);
-      return data['id'] as int;
-    }
-
-    throw Exception('Erro criando remoto');
-  }
-
-  Future<void> upsertRemote(Map<String, dynamic> payload) async {
+  Future<Map<String, dynamic>> upsertRemote(
+    Map<String, dynamic> payload,
+  ) async {
     final id = payload['id'];
-    final uri = Uri.parse('$baseUrl/$id');
+    http.Response response;
 
-    final response = await http.put(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(payload),
-    );
-
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Erro sincronizando remoto');
+    if (id == null) {
+      response = await http.post(
+        Uri.parse(baseUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
+      );
+    } else {
+      response = await http.put(
+        Uri.parse('$baseUrl/$id'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
+      );
     }
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+
+    throw Exception('Erro sincronizando remoto');
   }
 
   Future<void> deleteRemote(int id) async {

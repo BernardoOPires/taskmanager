@@ -1,7 +1,6 @@
-import 'dart:convert';
-import 'package:task_manager/services/api_service.dart';
-import 'package:task_manager/services/database_service.dart';
 import '../models/task.dart';
+import '../services/api_service.dart';
+import '../services/database_service.dart';
 
 class SyncService {
   SyncService._();
@@ -17,43 +16,53 @@ class SyncService {
       final queue = await DatabaseService.instance.getQueue();
 
       for (final item in queue) {
-        final id = item['id'];
-        final taskId = item['task_id'];
-        final op = item['operation'];
-        final payloadString = item['payload'];
-        final payload = jsonDecode(payloadString);
+        final queueId = item['id'] as int;
+        final taskId = item['task_id'] as int;
+        final operation = item['operation'] as String;
 
-        if (op == 'delete') {
+        if (operation == 'delete') {
           await ApiService.instance.deleteRemote(taskId);
-          await DatabaseService.instance.removeFromQueue(id);
+          await DatabaseService.instance.removeFromQueue(queueId);
           continue;
         }
 
-        final localModified =
-            payload['last_modified_at'] ??
-            DateTime.now().millisecondsSinceEpoch;
+        final localTasks = await DatabaseService.instance.readAll();
+        final localTask = localTasks.firstWhere((t) => t.id == taskId);
 
         final remote = await ApiService.instance.fetchRemote(taskId);
 
         if (remote == null) {
-          await ApiService.instance.upsertRemote(payload);
-          await DatabaseService.instance.markAsSynced(taskId);
-          await DatabaseService.instance.removeFromQueue(id);
+          final created = await ApiService.instance.upsertRemote(
+            localTask.toMap()..remove('id'),
+          );
+
+          final serverId = created['id'] as int;
+
+          await DatabaseService.instance.replaceLocalIdWithServerId(
+            localTask.id!,
+            serverId,
+          );
+
+          await DatabaseService.instance.removeFromQueue(queueId);
           continue;
         }
 
-        final remoteModified = remote['last_modified_at'];
+        final remoteModified = remote['last_modified_at'] as int;
+        final localModified = localTask.lastModifiedAt.millisecondsSinceEpoch;
 
         if (remoteModified > localModified) {
-          final task = Task.fromMap(remote);
-          await DatabaseService.instance.updateLocal(task);
-          await DatabaseService.instance.markAsSynced(taskId);
-          await DatabaseService.instance.removeFromQueue(id);
+          final taskFromServer = Task.fromMap(remote).copyWith(isSynced: true);
+
+          await DatabaseService.instance.updateLocal(taskFromServer);
         } else {
-          await ApiService.instance.upsertRemote(payload);
-          await DatabaseService.instance.markAsSynced(taskId);
-          await DatabaseService.instance.removeFromQueue(id);
+          await ApiService.instance.upsertRemote(localTask.toMap());
+
+          await DatabaseService.instance.updateLocal(
+            localTask.copyWith(isSynced: true, lastModifiedAt: DateTime.now()),
+          );
         }
+
+        await DatabaseService.instance.removeFromQueue(queueId);
       }
     } finally {
       _running = false;

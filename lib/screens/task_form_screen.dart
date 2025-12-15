@@ -1,9 +1,13 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
 import 'package:task_manager/services/task_repository.dart';
 import '../models/task.dart';
 import '../services/camera_service.dart';
 import '../services/location_service.dart';
+import '../services/connectivity_service.dart';
 import '../widgets/location_picker.dart';
 
 class TaskFormScreen extends StatefulWidget {
@@ -142,6 +146,29 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     ).showSnackBar(const SnackBar(content: Text('Localização removida')));
   }
 
+  Future<String?> _uploadPhoto(String path) async {
+    try {
+      final uri = Uri.parse('http://10.0.2.2:3000/upload');
+
+      final request = http.MultipartRequest('POST', uri);
+      request.files.add(await http.MultipartFile.fromPath('file', path));
+
+      final response = await request.send();
+      final body = await response.stream.bytesToString();
+
+      if (response.statusCode == 200) {
+        final jsonData = jsonDecode(body);
+        return jsonData['key'];
+      } else {
+        print("Erro no upload: ${response.statusCode} - $body");
+        return null;
+      }
+    } catch (e) {
+      print("Erro exception upload: $e");
+      return null;
+    }
+  }
+
   Future<void> _saveTask() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -149,13 +176,24 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     final now = DateTime.now();
 
     try {
+      String? finalPhotoPath = _photoPath;
+
+      final online = await ConnectivityService.instance.check();
+
+      if (online && _photoPath != null) {
+        final uploadedKey = await _uploadPhoto(_photoPath!);
+        if (uploadedKey != null) {
+          finalPhotoPath = uploadedKey;
+        }
+      }
+
       if (widget.task == null) {
         final newTask = Task(
           title: _titleController.text.trim(),
           description: _descriptionController.text.trim(),
           priority: _priority,
           completed: _completed,
-          photoPath: _photoPath,
+          photoPath: finalPhotoPath,
           latitude: _latitude,
           longitude: _longitude,
           locationName: _locationName,
@@ -164,6 +202,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
         );
 
         await TaskRepository().create(newTask);
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -178,7 +217,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
           description: _descriptionController.text.trim(),
           priority: _priority,
           completed: _completed,
-          photoPath: _photoPath,
+          photoPath: finalPhotoPath,
           latitude: _latitude,
           longitude: _longitude,
           locationName: _locationName,
@@ -187,6 +226,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
         );
 
         await TaskRepository().update(updated);
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(

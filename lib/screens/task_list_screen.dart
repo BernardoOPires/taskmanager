@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import '../models/task.dart';
 import '../services/task_repository.dart';
 import '../services/sensor_service.dart';
-import '../services/location_service.dart';
-import '../services/camera_service.dart';
 import '../services/connectivity_service.dart';
 import '../services/sync_service.dart';
 import 'task_form_screen.dart';
@@ -18,32 +16,45 @@ class TaskListScreen extends StatefulWidget {
 
 class _TaskListScreenState extends State<TaskListScreen> {
   List<Task> _tasks = [];
-  String _filter = 'all';
   bool _isLoading = true;
   bool _isOnline = true;
 
   @override
   void initState() {
     super.initState();
-    _initConnectivity();
     _loadTasks();
+    _initConnectivity();
     _setupShakeDetection();
   }
 
-  void _initConnectivity() async {
-    _isOnline = await ConnectivityService.instance.check();
-    setState(() {});
-
-    ConnectivityService.instance.onStatusChange.listen((online) async {
+  void _initConnectivity() {
+    ConnectivityService.instance.stream.listen((online) async {
       if (!mounted) return;
-
-      setState(() => _isOnline = online);
 
       if (online) {
         await SyncService.instance.sync();
-        await _loadTasks();
+
+        final freshTasks = await TaskRepository().readAll();
+
+        setState(() {
+          _isOnline = true;
+          _tasks = freshTasks.map((t) => t.copyWith(isSynced: true)).toList();
+        });
+
+        return;
       }
+
+      final tasks = await TaskRepository().readAll();
+
+      setState(() {
+        _isOnline = false;
+        _tasks = tasks;
+      });
     });
+  }
+
+  void _setupShakeDetection() {
+    SensorService.instance.startShakeDetection(_showShakeDialog);
   }
 
   @override
@@ -52,86 +63,14 @@ class _TaskListScreenState extends State<TaskListScreen> {
     super.dispose();
   }
 
-  void _setupShakeDetection() {
-    SensorService.instance.startShakeDetection(() {
-      _showShakeDialog();
-    });
-  }
-
-  void _showShakeDialog() {
-    final pending = _tasks.where((t) => !t.completed).toList();
-
-    if (pending.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Nenhuma tarefa pendente'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      return;
-    }
-
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Shake detectado'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: pending.take(3).map((t) {
-            return ListTile(
-              title: Text(t.title),
-              trailing: IconButton(
-                icon: const Icon(Icons.check_circle, color: Colors.green),
-                onPressed: () => _completeShake(t),
-              ),
-            );
-          }).toList(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _completeShake(Task task) async {
-    final updated = task.copyWith(
-      completed: true,
-      completedAt: DateTime.now(),
-      completedBy: 'shake',
-      isSynced: false,
-    );
-
-    await TaskRepository().update(updated);
-    Navigator.pop(context);
-    await _loadTasks();
-  }
-
   Future<void> _loadTasks() async {
     setState(() => _isLoading = true);
     final tasks = await TaskRepository().readAll();
-    if (mounted) {
-      setState(() {
-        _tasks = tasks;
-        _isLoading = false;
-      });
-    }
-  }
-
-  List<Task> get _filtered {
-    switch (_filter) {
-      case 'pending':
-        return _tasks.where((t) => !t.completed).toList();
-      case 'completed':
-        return _tasks.where((t) => t.completed).toList();
-      case 'nearby':
-        return _tasks;
-      default:
-        return _tasks;
-    }
+    if (!mounted) return;
+    setState(() {
+      _tasks = tasks;
+      _isLoading = false;
+    });
   }
 
   Future<void> _toggle(Task task) async {
@@ -146,10 +85,60 @@ class _TaskListScreenState extends State<TaskListScreen> {
     await _loadTasks();
   }
 
+  void _showShakeDialog() {
+    final pending = _tasks.where((t) => !t.completed).toList();
+    if (pending.isEmpty) return;
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Shake detectado'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: pending.take(3).map((t) {
+            return ListTile(
+              title: Text(t.title),
+              trailing: IconButton(
+                icon: const Icon(Icons.check_circle, color: Colors.green),
+                onPressed: () async {
+                  final updated = t.copyWith(
+                    completed: true,
+                    completedAt: DateTime.now(),
+                    completedBy: 'shake',
+                    isSynced: false,
+                  );
+                  await TaskRepository().update(updated);
+                  Navigator.pop(context);
+                  await _loadTasks();
+                },
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _toggleOnlineManually() async {
+    final newStatus = !_isOnline;
+
+    setState(() {
+      _isOnline = newStatus;
+    });
+
+    if (newStatus) {
+      await SyncService.instance.sync();
+      final tasks = await TaskRepository().readAll();
+      if (!mounted) return;
+
+      setState(() {
+        _tasks = tasks;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final filtered = _filtered;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Minhas Tarefas'),
@@ -158,14 +147,29 @@ class _TaskListScreenState extends State<TaskListScreen> {
       ),
       body: Column(
         children: [
-          Container(
+          SizedBox(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            color: _isOnline ? Colors.green : Colors.red,
-            child: Text(
-              _isOnline ? 'Online' : 'Offline',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, fontSize: 16),
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isOnline ? Colors.green : Colors.red,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.zero,
+                ),
+              ),
+              onPressed: _toggleOnlineManually,
+              icon: Icon(
+                _isOnline ? Icons.wifi : Icons.wifi_off,
+                color: Colors.white,
+              ),
+              label: Text(
+                _isOnline ? 'Online' : 'Offline',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ),
           Expanded(
@@ -173,13 +177,13 @@ class _TaskListScreenState extends State<TaskListScreen> {
                 ? const Center(child: CircularProgressIndicator())
                 : RefreshIndicator(
                     onRefresh: _loadTasks,
-                    child: filtered.isEmpty
+                    child: _tasks.isEmpty
                         ? const Center(child: Text('Nenhuma tarefa'))
                         : ListView.builder(
                             padding: const EdgeInsets.all(16),
-                            itemCount: filtered.length,
+                            itemCount: _tasks.length,
                             itemBuilder: (_, i) {
-                              final t = filtered[i];
+                              final t = _tasks[i];
                               return TaskCard(
                                 task: t,
                                 onTap: () async {
